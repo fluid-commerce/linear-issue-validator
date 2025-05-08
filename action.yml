@@ -1,0 +1,50 @@
+name: Linear Issue Validator
+description: Validates that a Linear issue is referenced on the PR
+
+inputs:
+  github-token:
+    description: GitHub token for API access
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Validate Linear issue comment
+      id: validate-issue
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      shell: bash
+      run: |
+        # Get PR number from the workflow event
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+        elif [[ "${{ github.event_name }}" == "issue_comment" ]]; then
+          if [[ -n "${{ github.event.issue.pull_request.url }}" ]]; then
+            PR_NUMBER="${{ github.event.issue.number }}"
+          else
+            echo "Not a PR comment, skipping"
+            exit 1
+          fi
+        else
+          echo "Unknown event type '${{ github.event_name }}', skipping"
+          exit 1
+        fi
+
+        if [ -z "$PR_NUMBER" ]; then
+          echo "No PR number found, skipping"
+          exit 1
+        fi
+
+        # Get all comments on the PR
+        PR_COMMENTS=$(gh api repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments --paginate)
+
+        # Check if any comment is from the linear bot
+        FOUND_COMMENT=$(echo "$PR_COMMENTS" | jq '[.[] | select(.user.login == "linear[bot]" and .performed_via_github_app.slug == "linear")] | length > 0')
+
+        if [ "$FOUND_COMMENT" = "true" ]; then
+          echo "Linear issue comment found!"
+          exit 0
+        else
+          echo "No Linear issue comment found"
+          exit 1
+        fi
