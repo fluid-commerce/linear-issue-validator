@@ -38,8 +38,27 @@ runs:
         # Get all comments on the PR
         PR_COMMENTS=$(gh api repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments --paginate)
 
-        # Check if any comment is from the linear bot
-        FOUND_COMMENT=$(echo "$PR_COMMENTS" | jq '[.[] | select(.user.login == "linear[bot]" and .performed_via_github_app.slug == "linear")] | length > 0')
+        # Check if any comment is from the linear bot.
+        #
+        # TWO identities, because Linear moved apps. The original GitHub
+        # integration comments as `linear[bot]` via the `linear` app; the newer
+        # one comments as `linear-code[bot]` via `linear-code`. Both are
+        # installed on fluid-commerce and both are legitimate.
+        #
+        # Matching only the old pair made this check impossible to pass on any
+        # PR opened after the switch: in fluid-studios the last `linear[bot]`
+        # comment is 2026-05-29 and every one since is `linear-code[bot]`, the
+        # most recent 2026-09-03. Since this action gates merges, that failed
+        # every PR in every repo that runs it, with a message ("No Linear issue
+        # comment found") that reads as the author's mistake.
+        #
+        # login and app slug are still checked as a PAIR rather than
+        # independently, so a comment has to come from the app that matches its
+        # author.
+        FOUND_COMMENT=$(echo "$PR_COMMENTS" | jq '[.[] | select(
+          (.user.login == "linear[bot]" and .performed_via_github_app.slug == "linear") or
+          (.user.login == "linear-code[bot]" and .performed_via_github_app.slug == "linear-code")
+        )] | length > 0')
 
         if [ "$FOUND_COMMENT" = "true" ]; then
           echo "Linear issue comment found!"
