@@ -55,10 +55,20 @@ runs:
         # login and app slug are still checked as a PAIR rather than
         # independently, so a comment has to come from the app that matches its
         # author.
-        FOUND_COMMENT=$(echo "$PR_COMMENTS" | jq '[.[] | select(
+        # `jq -s` and `any` rather than a bare filter over `$PR_COMMENTS`.
+        #
+        # `gh api --paginate` does merge JSON array pages into one array today
+        # (verified on gh 2.92 and 2.93: `per_page=1` against a 3-comment PR
+        # emits ONE array of 3, not three arrays), so the previous shape was not
+        # broken. But it was correct only BECAUSE of that merging: fed two
+        # arrays it emits `false\ntrue`, and the `= "true"` test below turns
+        # that into a refusal. Slurping makes the filter correct on its own
+        # terms rather than depending on an upstream convenience no reader can
+        # see from here.
+        FOUND_COMMENT=$(echo "$PR_COMMENTS" | jq -s 'map(.[]) | any(
           (.user.login == "linear[bot]" and .performed_via_github_app.slug == "linear") or
           (.user.login == "linear-code[bot]" and .performed_via_github_app.slug == "linear-code")
-        )] | length > 0')
+        )')
 
         if [ "$FOUND_COMMENT" = "true" ]; then
           echo "Linear issue comment found!"
